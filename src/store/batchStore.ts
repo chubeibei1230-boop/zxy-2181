@@ -69,6 +69,10 @@ export class BatchStore {
       reasons.push(`存在未解决异常：${activeException.reason}`);
     }
 
+    if (!order.checker) {
+      reasons.push('未分配核对人');
+    }
+
     return {
       eligible: reasons.length === 0,
       reasons
@@ -171,7 +175,7 @@ export class BatchStore {
     if (batch.orderIds.includes(orderId)) return false;
 
     if (batch.refrigeration !== 'mixed' && batch.refrigeration !== order.refrigeration) {
-      batch.refrigeration = 'mixed';
+      return false;
     }
 
     batch.orderIds.push(orderId);
@@ -303,9 +307,8 @@ export class BatchStore {
   getUnbatchedReadyOrders(): Order[] {
     const all = orderStore.getAll();
     return all.filter((o) => {
-      if (o.status !== 'ready_ship') return false;
-      const active = orderStore.getActiveException(o.id);
-      if (active) return false;
+      const result = this.checkOrderEligibility(o);
+      if (!result.eligible) return false;
       const inBatch = this.batches.some(
         (b) => b.status !== 'completed' && b.orderIds.includes(o.id)
       );

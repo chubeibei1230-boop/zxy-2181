@@ -3340,7 +3340,10 @@ class App {
 
     const eligibleOrders = batchStore
       .getUnbatchedReadyOrders()
-      .filter((o) => o.pickupDate === batch.pickupDate);
+      .filter((o) =>
+        o.pickupDate === batch.pickupDate &&
+        (batch.refrigeration === 'mixed' || o.refrigeration === batch.refrigeration)
+      );
 
     if (eligibleOrders.length === 0) {
       alert(`当前取货日期（${batch.pickupDate}）暂无符合条件的可出货订单可添加。`);
@@ -3386,7 +3389,7 @@ class App {
     intro.className = 'modal-intro-box';
     intro.innerHTML = `
       为批次 <strong style="color:#f97316;">${escapeHtml(batch.id)}</strong> 添加订单。
-      仅显示取货日期为 <strong>${escapeHtml(batch.pickupDate)}</strong> 的可出货订单。
+      仅显示取货日期为 <strong>${escapeHtml(batch.pickupDate)}</strong>${batch.refrigeration === 'mixed' ? '' : `、冷藏要求为 <strong>${escapeHtml(REFRIGERATION_LABELS[batch.refrigeration])}</strong>`} 的可出货订单。
     `;
     body.appendChild(intro);
 
