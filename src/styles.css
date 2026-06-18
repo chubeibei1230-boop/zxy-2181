@@ -1055,6 +1055,364 @@ textarea {
   cursor: default;
 }
 
+.handover-batch-info {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.handover-batch-id {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.handover-batch-id strong {
+  font-size: 16px;
+  color: #0c4a6e;
+}
+
+.handover-label {
+  color: #0369a1;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.handover-batch-meta {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #0c4a6e;
+}
+
+.handover-batch-meta strong {
+  color: #075985;
+}
+
+.handover-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.handover-stat-card {
+  background: #fafafa;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.handover-stat-icon {
+  font-size: 24px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.handover-stat-info {
+  flex: 1;
+}
+
+.handover-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.handover-stat-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+.handover-section {
+  margin-bottom: 16px;
+}
+
+.handover-section-title {
+  font-weight: 600;
+  color: #374151;
+  font-size: 14px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.handover-refrig-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.handover-warning-section {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.handover-warn-box {
+  border-radius: 8px;
+  padding: 12px 14px;
+  border: 1px solid;
+}
+
+.handover-warn-unchecked {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.handover-warn-exception {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.handover-warn-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.handover-warn-unchecked .handover-warn-title {
+  color: #92400e;
+}
+
+.handover-warn-exception .handover-warn-title {
+  color: #991b1b;
+}
+
+.handover-warn-title strong {
+  font-size: 14px;
+}
+
+.handover-warn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.handover-warn-item {
+  font-size: 12px;
+  padding: 4px 8px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.handover-warn-unchecked .handover-warn-item {
+  color: #78350f;
+  border-color: #fde68a;
+}
+
+.handover-warn-exception .handover-warn-item {
+  color: #7f1d1d;
+  border-color: #fecaca;
+}
+
+.handover-allergy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+}
+
+.handover-allergy-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.handover-allergy-order {
+  color: #7f1d1d;
+  font-weight: 500;
+}
+
+.handover-remark-content {
+  padding: 10px 12px;
+  background: #fef9c3;
+  border-radius: 6px;
+  border: 1px solid #fde047;
+  color: #713f12;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.handover-remark-batch {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #78350f;
+}
+
+.handover-form-section {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 8px;
+}
+
+.handover-form-title {
+  font-weight: 600;
+  color: #166534;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.handover-completed-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.handover-banner-icon {
+  font-size: 36px;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.handover-banner-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #166534;
+  margin-bottom: 4px;
+}
+
+.handover-banner-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #15803d;
+}
+
+.handover-banner-meta strong {
+  color: #166534;
+}
+
+.handover-info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.handover-info-item {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.handover-info-label {
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.handover-info-value {
+  font-size: 13px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.handover-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.handover-order-item {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.handover-order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.handover-order-id {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.handover-order-customer {
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.handover-order-boxes {
+  color: #f97316;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.handover-order-products {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.handover-order-allergy {
+  margin-bottom: 6px;
+}
+
+.handover-order-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 6px;
+  border-top: 1px dashed #e5e7eb;
+}
+
 @media (max-width: 768px) {
   .batch-table th,
   .batch-table td {
@@ -1074,5 +1432,13 @@ textarea {
   .batch-status-badge {
     font-size: 10px;
     padding: 2px 6px;
+  }
+
+  .handover-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .handover-info-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -60,6 +60,8 @@ class App {
     status: 'all',
     keyword: ''
   };
+  private handoverDialogBatchId: string | null = null;
+  private handoverRecordBatchId: string | null = null;
 
   constructor() {
     this.render();
@@ -2346,19 +2348,18 @@ class App {
     });
     actionCell.appendChild(printBtn);
 
-    const exportBtn = this.createButton('导出CSV', 'btn-sm', () => {
-      exportBatchToCSV(batch);
-    });
-    actionCell.appendChild(exportBtn);
+    if (batch.status === 'completed') {
+      const recordBtn = this.createButton('📋 交接记录', 'btn-sm btn-success', () => {
+        this.openHandoverRecord(batch.id);
+      });
+      actionCell.appendChild(recordBtn);
+    }
 
     if (batch.status !== 'completed') {
-      const shipBtn = this.createButton('✓ 标记已出货', 'btn-sm btn-success', () => {
-        const receivedBy = prompt('请输入接收人姓名（可选）：', '') || '';
-        if (confirm(`确认将批次 ${batch.id} 标记为已出货？`)) {
-          batchStore.markShipped(batch.id, receivedBy);
-        }
+      const handoverBtn = this.createButton('🤝 交接确认', 'btn-sm btn-success', () => {
+        this.openHandoverDialog(batch.id);
       });
-      actionCell.appendChild(shipBtn);
+      actionCell.appendChild(handoverBtn);
 
       const deleteBtn = this.createButton('删除', 'btn-sm', () => {
         if (confirm(`确定删除批次 ${batch.id} 吗？批次内的订单将被释放。`)) {
@@ -2457,14 +2458,18 @@ class App {
     const exportBtn = this.createButton('📊 导出CSV', '', () => exportBatchToCSV(batch));
     rightActions.append(printBtn, exportBtn);
 
-    if (batch.status !== 'completed') {
-      const shipBtn = this.createButton('✓ 标记已出货', 'btn-success', () => {
-        const receivedBy = prompt('请输入接收人姓名（可选）：', batch.receivedBy || '') || '';
-        if (confirm(`确认将批次 ${batch.id} 标记为已出货？`)) {
-          batchStore.markShipped(batch.id, receivedBy);
-        }
+    if (batch.status === 'completed') {
+      const recordBtn = this.createButton('📋 交接记录', 'btn-info', () => {
+        this.openHandoverRecord(batch.id);
       });
-      rightActions.appendChild(shipBtn);
+      rightActions.appendChild(recordBtn);
+    }
+
+    if (batch.status !== 'completed') {
+      const handoverBtn = this.createButton('🤝 交接确认出货', 'btn-success', () => {
+        this.openHandoverDialog(batch.id);
+      });
+      rightActions.appendChild(handoverBtn);
     }
 
     headerBar.append(leftGroup, rightActions);
@@ -2496,8 +2501,20 @@ class App {
         <span style="font-weight:600;color:#166534;">✅ 出货完成</span>
         <span style="margin-left:16px;color:#15803d;">🚚 出货时间：${batch.shippedAt ? escapeHtml(new Date(batch.shippedAt).toLocaleString('zh-CN')) : '-'}</span>
         <span style="margin-left:16px;color:#15803d;">🤝 接收人：${escapeHtml(batch.receivedBy || '未记录')}</span>
+        ${batch.handoverBy ? `<span style="margin-left:16px;color:#15803d;">📝 交接人：${escapeHtml(batch.handoverBy)}</span>` : ''}
       `;
       container.appendChild(shippedInfo);
+
+      if (batch.handoverRemark) {
+        const handoverRemarkBox = document.createElement('div');
+        handoverRemarkBox.style.background = '#ecfdf5';
+        handoverRemarkBox.style.border = '1px solid #6ee7b7';
+        handoverRemarkBox.style.borderRadius = '8px';
+        handoverRemarkBox.style.padding = '12px 16px';
+        handoverRemarkBox.style.marginBottom = '16px';
+        handoverRemarkBox.innerHTML = `<span style="font-weight:600;color:#065f46;">📝 交接备注：</span><span style="color:#064e3b;">${escapeHtml(batch.handoverRemark)}</span>`;
+        container.appendChild(handoverRemarkBox);
+      }
     }
 
     container.appendChild(this.renderBatchDetailOrders(batch, orders));
@@ -3545,6 +3562,524 @@ class App {
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
         this.createBatchContext = null;
+        overlay.remove();
+      }
+    });
+  }
+
+  private openHandoverDialog(batchId: string): void {
+    this.handoverDialogBatchId = batchId;
+    this.renderHandoverDialog();
+  }
+
+  private renderHandoverDialog(): void {
+    if (!this.handoverDialogBatchId) return;
+
+    const existing = document.querySelector('.handover-modal-overlay');
+    if (existing) existing.remove();
+
+    const batch = batchStore.getById(this.handoverDialogBatchId);
+    if (!batch) {
+      this.handoverDialogBatchId = null;
+      return;
+    }
+
+    const summary = batchStore.getHandoverSummary(batch);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay handover-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal handover-modal';
+    modal.style.maxWidth = '720px';
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+    const h2 = document.createElement('h2');
+    h2.textContent = '🤝 出货交接确认';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'modal-close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.onclick = () => {
+      this.handoverDialogBatchId = null;
+      overlay.remove();
+    };
+    header.append(h2, closeBtn);
+
+    const body = document.createElement('div');
+    body.className = 'modal-body';
+
+    const batchInfo = document.createElement('div');
+    batchInfo.className = 'handover-batch-info';
+    batchInfo.innerHTML = `
+      <div class="handover-batch-id">
+        <span class="handover-label">批次号：</span>
+        <strong>${escapeHtml(batch.id)}</strong>
+        <span class="batch-status-badge" style="margin-left:8px;background:${BATCH_STATUS_COLORS[batch.status]}20;color:${BATCH_STATUS_COLORS[batch.status]};border:1px solid ${BATCH_STATUS_COLORS[batch.status]}40;">
+          ${BATCH_STATUS_LABELS[batch.status]}
+        </span>
+      </div>
+      <div class="handover-batch-meta">
+        <span>📅 取货日期：<strong>${escapeHtml(batch.pickupDate)}</strong></span>
+        <span>👤 创建人：<strong>${escapeHtml(batch.createdBy || '-')}</strong></span>
+      </div>
+    `;
+    body.appendChild(batchInfo);
+
+    const statsGrid = document.createElement('div');
+    statsGrid.className = 'handover-stats-grid';
+
+    const statItems = [
+      { label: '订单数量', value: summary.orderCount, icon: '📋', color: '#3b82f6' },
+      { label: '客户数量', value: summary.customerCount, icon: '👥', color: '#8b5cf6' },
+      { label: '总盒数', value: summary.totalBoxes, icon: '📦', color: '#f59e0b' }
+    ];
+
+    statItems.forEach((item) => {
+      const card = document.createElement('div');
+      card.className = 'handover-stat-card';
+      card.style.borderLeft = `3px solid ${item.color}`;
+      card.innerHTML = `
+        <div class="handover-stat-icon">${item.icon}</div>
+        <div class="handover-stat-info">
+          <div class="handover-stat-value" style="color:${item.color};">${item.value}</div>
+          <div class="handover-stat-label">${item.label}</div>
+        </div>
+      `;
+      statsGrid.appendChild(card);
+    });
+
+    body.appendChild(statsGrid);
+
+    const refrigSection = document.createElement('div');
+    refrigSection.className = 'handover-section';
+    const refrigTitle = document.createElement('div');
+    refrigTitle.className = 'handover-section-title';
+    refrigTitle.textContent = '❄️ 冷藏要求汇总';
+    const refrigContent = document.createElement('div');
+    refrigContent.className = 'handover-refrig-list';
+    const refrigItems: { type: string; label: string; count: number }[] = [];
+    if (summary.refrigerationSummary.none > 0) {
+      refrigItems.push({ type: 'none', label: '常温', count: summary.refrigerationSummary.none });
+    }
+    if (summary.refrigerationSummary.chilled > 0) {
+      refrigItems.push({ type: 'chilled', label: '冷藏', count: summary.refrigerationSummary.chilled });
+    }
+    if (summary.refrigerationSummary.frozen > 0) {
+      refrigItems.push({ type: 'frozen', label: '冷冻', count: summary.refrigerationSummary.frozen });
+    }
+    refrigItems.forEach((item) => {
+      const tag = document.createElement('span');
+      tag.className = `refrigeration-tag refrigeration-${item.type}`;
+      tag.style.fontSize = '12px';
+      tag.style.padding = '4px 10px';
+      tag.textContent = `${item.label} ${item.count}单`;
+      refrigContent.appendChild(tag);
+    });
+    refrigSection.append(refrigTitle, refrigContent);
+    body.appendChild(refrigSection);
+
+    if (summary.uncheckedCount > 0 || summary.unresolvedExceptionCount > 0) {
+      const warningSection = document.createElement('div');
+      warningSection.className = 'handover-warning-section';
+
+      if (summary.uncheckedCount > 0) {
+        const warnBox = document.createElement('div');
+        warnBox.className = 'handover-warn-box handover-warn-unchecked';
+        warnBox.innerHTML = `
+          <div class="handover-warn-title">
+            <span>⚠️ 未核对订单</span>
+            <strong>${summary.uncheckedCount} 单</strong>
+          </div>
+          <div class="handover-warn-list">
+            ${summary.uncheckedOrders.map((o) => `<span class="handover-warn-item">${escapeHtml(o.id)} - ${escapeHtml(o.customerName)}</span>`).join('')}
+          </div>
+        `;
+        warningSection.appendChild(warnBox);
+      }
+
+      if (summary.unresolvedExceptionCount > 0) {
+        const warnBox = document.createElement('div');
+        warnBox.className = 'handover-warn-box handover-warn-exception';
+        warnBox.innerHTML = `
+          <div class="handover-warn-title">
+            <span>🚨 未解决异常</span>
+            <strong>${summary.unresolvedExceptionCount} 单</strong>
+          </div>
+          <div class="handover-warn-list">
+            ${summary.unresolvedExceptionOrders.map((o) => {
+              const exc = orderStore.getActiveException(o.id);
+              return `<span class="handover-warn-item">${escapeHtml(o.id)} - ${escapeHtml(o.customerName)}：${escapeHtml(exc?.reason || '')}</span>`;
+            }).join('')}
+          </div>
+        `;
+        warningSection.appendChild(warnBox);
+      }
+
+      body.appendChild(warningSection);
+    }
+
+    if (summary.allergyCount > 0) {
+      const allergySection = document.createElement('div');
+      allergySection.className = 'handover-section';
+      const allergyTitle = document.createElement('div');
+      allergyTitle.className = 'handover-section-title';
+      allergyTitle.innerHTML = `⚠️ 过敏提醒（${summary.allergyCount} 单）`;
+      const allergyList = document.createElement('div');
+      allergyList.className = 'handover-allergy-list';
+      summary.allergyOrders.forEach((o) => {
+        const item = document.createElement('div');
+        item.className = 'handover-allergy-item';
+        item.innerHTML = `
+          <span class="handover-allergy-order">${escapeHtml(o.id)} - ${escapeHtml(o.customerName)}</span>
+          <span class="allergy-tag">${escapeHtml(o.allergyWarning || '')}</span>
+        `;
+        allergyList.appendChild(item);
+      });
+      allergySection.append(allergyTitle, allergyList);
+      body.appendChild(allergySection);
+    }
+
+    if (summary.remark) {
+      const remarkSection = document.createElement('div');
+      remarkSection.className = 'handover-section';
+      const remarkTitle = document.createElement('div');
+      remarkTitle.className = 'handover-section-title';
+      remarkTitle.textContent = '📝 批次备注';
+      const remarkContent = document.createElement('div');
+      remarkContent.className = 'handover-remark-content';
+      remarkContent.textContent = summary.remark;
+      remarkSection.append(remarkTitle, remarkContent);
+      body.appendChild(remarkSection);
+    }
+
+    const formSection = document.createElement('div');
+    formSection.className = 'handover-form-section';
+
+    const formTitle = document.createElement('div');
+    formTitle.className = 'handover-form-title';
+    formTitle.textContent = '📋 交接确认信息';
+    formSection.appendChild(formTitle);
+
+    const formGrid = document.createElement('div');
+    formGrid.style.display = 'grid';
+    formGrid.style.gridTemplateColumns = '1fr 1fr';
+    formGrid.style.gap = '12px';
+
+    const receivedByFg = this.createFormGroup(
+      '接收人 *',
+      (() => {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.id = 'handover-received-by';
+        inp.placeholder = '请输入接收人姓名';
+        inp.maxLength = 20;
+        inp.value = batch.receivedBy || '';
+        return inp;
+      })()
+    );
+
+    const handoverByFg = this.createFormGroup(
+      '交接人',
+      (() => {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.id = 'handover-by';
+        inp.placeholder = '请输入交接人姓名';
+        inp.maxLength = 20;
+        return inp;
+      })()
+    );
+
+    formGrid.append(receivedByFg, handoverByFg);
+    formSection.appendChild(formGrid);
+
+    const remarkFg = this.createFormGroup(
+      '交接备注（可选）',
+      (() => {
+        const ta = document.createElement('textarea');
+        ta.id = 'handover-remark';
+        ta.rows = 2;
+        ta.maxLength = 200;
+        ta.placeholder = '如：送货司机车牌号、到货时间要求、特殊注意事项等';
+        return ta;
+      })()
+    );
+    formSection.appendChild(remarkFg);
+
+    body.appendChild(formSection);
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+
+    const cancelBtn = this.createButton('取消', '', () => {
+      this.handoverDialogBatchId = null;
+      overlay.remove();
+    });
+
+    const confirmBtn = this.createButton(
+      '✅ 确认交接出货',
+      'btn-success',
+      () => {
+        const receivedByInput = document.getElementById('handover-received-by') as HTMLInputElement;
+        const handoverByInput = document.getElementById('handover-by') as HTMLInputElement;
+        const handoverRemarkInput = document.getElementById('handover-remark') as HTMLTextAreaElement;
+
+        const receivedBy = receivedByInput?.value.trim().slice(0, 20) || '';
+        const handoverBy = handoverByInput?.value.trim().slice(0, 20) || '';
+        const handoverRemark = handoverRemarkInput?.value.trim().slice(0, 200) || '';
+
+        if (!receivedBy) {
+          alert('请输入接收人姓名');
+          receivedByInput?.focus();
+          return;
+        }
+
+        let confirmMessage = `确认完成交接并出货？\n\n批次号：${batch.id}\n接收人：${receivedBy}`;
+        if (handoverBy) confirmMessage += `\n交接人：${handoverBy}`;
+        if (summary.uncheckedCount > 0) {
+          confirmMessage += `\n\n⚠️ 注意：有 ${summary.uncheckedCount} 个订单未核对，将自动标记为已核对`;
+        }
+        if (summary.unresolvedExceptionCount > 0) {
+          confirmMessage += `\n\n🚨 警告：有 ${summary.unresolvedExceptionCount} 个订单存在未解决异常，出货后将标记为已出货状态`;
+        }
+
+        if (!confirm(confirmMessage)) return;
+
+        const result = batchStore.markShipped(batch.id, receivedBy, handoverRemark, handoverBy);
+        if (result) {
+          this.handoverDialogBatchId = null;
+          overlay.remove();
+        } else {
+          alert('交接失败，请刷新后重试');
+        }
+      }
+    );
+
+    footer.append(cancelBtn, confirmBtn);
+
+    modal.append(header, body, footer);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        this.handoverDialogBatchId = null;
+        overlay.remove();
+      }
+    });
+  }
+
+  private openHandoverRecord(batchId: string): void {
+    this.handoverRecordBatchId = batchId;
+    this.renderHandoverRecordDialog();
+  }
+
+  private renderHandoverRecordDialog(): void {
+    if (!this.handoverRecordBatchId) return;
+
+    const existing = document.querySelector('.handover-record-modal-overlay');
+    if (existing) existing.remove();
+
+    const batch = batchStore.getById(this.handoverRecordBatchId);
+    if (!batch) {
+      this.handoverRecordBatchId = null;
+      return;
+    }
+
+    const orders = batchStore.getBatchOrders(batch);
+    const summary = batchStore.getHandoverSummary(batch);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay handover-record-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal handover-record-modal';
+    modal.style.maxWidth = '720px';
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+    const h2 = document.createElement('h2');
+    h2.textContent = '📋 交接记录复盘';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'modal-close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.onclick = () => {
+      this.handoverRecordBatchId = null;
+      overlay.remove();
+    };
+    header.append(h2, closeBtn);
+
+    const body = document.createElement('div');
+    body.className = 'modal-body';
+
+    const completedBanner = document.createElement('div');
+    completedBanner.className = 'handover-completed-banner';
+    completedBanner.innerHTML = `
+      <div class="handover-banner-icon">✅</div>
+      <div class="handover-banner-content">
+        <div class="handover-banner-title">交接完成</div>
+        <div class="handover-banner-meta">
+          <span>批次号：<strong>${escapeHtml(batch.id)}</strong></span>
+          <span>状态：<span class="batch-status-badge" style="background:${BATCH_STATUS_COLORS[batch.status]}20;color:${BATCH_STATUS_COLORS[batch.status]};border:1px solid ${BATCH_STATUS_COLORS[batch.status]}40;">${BATCH_STATUS_LABELS[batch.status]}</span></span>
+        </div>
+      </div>
+    `;
+    body.appendChild(completedBanner);
+
+    const handoverInfo = document.createElement('div');
+    handoverInfo.className = 'handover-info-grid';
+    handoverInfo.innerHTML = `
+      <div class="handover-info-item">
+        <div class="handover-info-label">📅 取货日期</div>
+        <div class="handover-info-value">${escapeHtml(batch.pickupDate)}</div>
+      </div>
+      <div class="handover-info-item">
+        <div class="handover-info-label">👤 创建人</div>
+        <div class="handover-info-value">${escapeHtml(batch.createdBy || '-')}</div>
+      </div>
+      <div class="handover-info-item">
+        <div class="handover-info-label">🕐 创建时间</div>
+        <div class="handover-info-value">${escapeHtml(new Date(batch.createdAt).toLocaleString('zh-CN'))}</div>
+      </div>
+      <div class="handover-info-item">
+        <div class="handover-info-label">🚚 出货时间</div>
+        <div class="handover-info-value">${batch.shippedAt ? escapeHtml(new Date(batch.shippedAt).toLocaleString('zh-CN')) : '-'}</div>
+      </div>
+      <div class="handover-info-item">
+        <div class="handover-info-label">🤝 接收人</div>
+        <div class="handover-info-value">${escapeHtml(batch.receivedBy || '未记录')}</div>
+      </div>
+      <div class="handover-info-item">
+        <div class="handover-info-label">📝 交接人</div>
+        <div class="handover-info-value">${escapeHtml(batch.handoverBy || '未记录')}</div>
+      </div>
+    `;
+    body.appendChild(handoverInfo);
+
+    const statsGrid = document.createElement('div');
+    statsGrid.className = 'handover-stats-grid';
+
+    const statItems = [
+      { label: '订单数量', value: summary.orderCount, icon: '📋', color: '#3b82f6' },
+      { label: '客户数量', value: summary.customerCount, icon: '👥', color: '#8b5cf6' },
+      { label: '总盒数', value: summary.totalBoxes, icon: '📦', color: '#f59e0b' }
+    ];
+
+    statItems.forEach((item) => {
+      const card = document.createElement('div');
+      card.className = 'handover-stat-card';
+      card.style.borderLeft = `3px solid ${item.color}`;
+      card.innerHTML = `
+        <div class="handover-stat-icon">${item.icon}</div>
+        <div class="handover-stat-info">
+          <div class="handover-stat-value" style="color:${item.color};">${item.value}</div>
+          <div class="handover-stat-label">${item.label}</div>
+        </div>
+      `;
+      statsGrid.appendChild(card);
+    });
+
+    body.appendChild(statsGrid);
+
+    const customerSection = document.createElement('div');
+    customerSection.className = 'handover-section';
+    const customerTitle = document.createElement('div');
+    customerTitle.className = 'handover-section-title';
+    customerTitle.textContent = `👥 客户清单（${summary.customerCount} 位）`;
+    const customerList = document.createElement('div');
+    customerList.style.display = 'flex';
+    customerList.style.flexWrap = 'wrap';
+    customerList.style.gap = '6px';
+    const customerNames = Array.from(new Set(orders.map((o) => o.customerName)));
+    customerNames.forEach((name) => {
+      const tag = document.createElement('span');
+      tag.className = 'customer-tag';
+      tag.textContent = name;
+      customerList.appendChild(tag);
+    });
+    customerSection.append(customerTitle, customerList);
+    body.appendChild(customerSection);
+
+    if (batch.handoverRemark) {
+      const remarkSection = document.createElement('div');
+      remarkSection.className = 'handover-section';
+      const remarkTitle = document.createElement('div');
+      remarkTitle.className = 'handover-section-title';
+      remarkTitle.textContent = '📝 交接备注';
+      const remarkContent = document.createElement('div');
+      remarkContent.className = 'handover-remark-content';
+      remarkContent.textContent = batch.handoverRemark;
+      remarkSection.append(remarkTitle, remarkContent);
+      body.appendChild(remarkSection);
+    }
+
+    if (batch.remark) {
+      const remarkSection = document.createElement('div');
+      remarkSection.className = 'handover-section';
+      const remarkTitle = document.createElement('div');
+      remarkTitle.className = 'handover-section-title';
+      remarkTitle.textContent = '📋 批次备注';
+      const remarkContent = document.createElement('div');
+      remarkContent.className = 'handover-remark-content handover-remark-batch';
+      remarkContent.textContent = batch.remark;
+      remarkSection.append(remarkTitle, remarkContent);
+      body.appendChild(remarkSection);
+    }
+
+    const orderSection = document.createElement('div');
+    orderSection.className = 'handover-section';
+    const orderTitle = document.createElement('div');
+    orderTitle.className = 'handover-section-title';
+    orderTitle.textContent = `🧾 订单明细（${orders.length} 单）`;
+    const orderList = document.createElement('div');
+    orderList.className = 'handover-order-list';
+
+    orders.forEach((order) => {
+      const item = document.createElement('div');
+      item.className = 'handover-order-item';
+      item.innerHTML = `
+        <div class="handover-order-header">
+          <span class="handover-order-id">${escapeHtml(order.id)}</span>
+          <span class="handover-order-customer">${escapeHtml(order.customerName)}</span>
+          <span class="handover-order-boxes">${order.boxQuantity} 盒</span>
+        </div>
+        <div class="handover-order-products">
+          ${order.products.map((p) => `<span>${escapeHtml(p.name)} ×${p.quantity}</span>`).join('，')}
+        </div>
+        ${order.allergyWarning ? `<div class="handover-order-allergy"><span class="allergy-tag">${escapeHtml(order.allergyWarning)}</span></div>` : ''}
+        <div class="handover-order-footer">
+          <span class="refrigeration-tag refrigeration-${order.refrigeration}" style="font-size:11px;">${REFRIGERATION_LABELS[order.refrigeration]}</span>
+          <span style="color:#6b7280;font-size:12px;">核对人：${escapeHtml(order.checker || '未分配')}</span>
+        </div>
+      `;
+      orderList.appendChild(item);
+    });
+
+    orderSection.append(orderTitle, orderList);
+    body.appendChild(orderSection);
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+
+    const printBtn = this.createButton('🖨️ 打印交接单', '', () => {
+      printBatchHandover(batch);
+    });
+
+    const closeBtn2 = this.createButton('关闭', 'btn-primary', () => {
+      this.handoverRecordBatchId = null;
+      overlay.remove();
+    });
+
+    footer.append(printBtn, closeBtn2);
+
+    modal.append(header, body, footer);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        this.handoverRecordBatchId = null;
         overlay.remove();
       }
     });

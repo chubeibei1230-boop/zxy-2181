@@ -129,6 +129,8 @@ export interface ShippingBatch {
   updatedAt: string;
   shippedAt?: string;
   receivedBy?: string;
+  handoverRemark?: string;
+  handoverBy?: string;
 }
 
 export interface BatchFilterOptions {

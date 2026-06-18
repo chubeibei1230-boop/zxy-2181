@@ -204,7 +204,7 @@ export class BatchStore {
     return true;
   }
 
-  markShipped(batchId: string, receivedBy?: string): boolean {
+  markShipped(batchId: string, receivedBy?: string, handoverRemark?: string, handoverBy?: string): boolean {
     const batch = this.batches.find((b) => b.id === batchId);
     if (!batch) return false;
     if (batch.status === 'completed') return false;
@@ -213,6 +213,8 @@ export class BatchStore {
     batch.status = 'completed';
     batch.shippedAt = now;
     batch.receivedBy = receivedBy || '';
+    batch.handoverRemark = handoverRemark || '';
+    batch.handoverBy = handoverBy || '';
     batch.updatedAt = now;
 
     batch.checkedIds = [...batch.orderIds];
@@ -302,6 +304,59 @@ export class BatchStore {
     const checkedCount = batch.checkedIds.filter((id) => batch.orderIds.includes(id)).length;
     const progress = orderCount > 0 ? Math.round((checkedCount / orderCount) * 100) : 0;
     return { orderCount, totalBoxes, customerCount, checkedCount, progress };
+  }
+
+  getHandoverSummary(batch: ShippingBatch): {
+    orderCount: number;
+    customerCount: number;
+    totalBoxes: number;
+    uncheckedCount: number;
+    uncheckedOrders: Order[];
+    unresolvedExceptionCount: number;
+    unresolvedExceptionOrders: Order[];
+    allergyOrders: Order[];
+    allergyCount: number;
+    refrigerationSummary: { chilled: number; frozen: number; none: number; mixed: boolean };
+    remark: string;
+  } {
+    const orders = this.getBatchOrders(batch);
+    const orderCount = orders.length;
+    const totalBoxes = orders.reduce((sum, o) => sum + o.boxQuantity, 0);
+    const customerCount = new Set(orders.map((o) => o.customerName)).size;
+
+    const uncheckedOrders = orders.filter((o) => !batch.checkedIds.includes(o.id));
+    const uncheckedCount = uncheckedOrders.length;
+
+    const unresolvedExceptionOrders = orders.filter((o) => {
+      const active = orderStore.getActiveException(o.id);
+      return active && active.status !== 'resolved';
+    });
+    const unresolvedExceptionCount = unresolvedExceptionOrders.length;
+
+    const allergyOrders = orders.filter((o) => o.allergyWarning && o.allergyWarning.trim() !== '');
+    const allergyCount = allergyOrders.length;
+
+    const refrigerationTypes = new Set(orders.map((o) => o.refrigeration));
+    const refrigerationSummary = {
+      chilled: orders.filter((o) => o.refrigeration === 'chilled').length,
+      frozen: orders.filter((o) => o.refrigeration === 'frozen').length,
+      none: orders.filter((o) => o.refrigeration === 'none').length,
+      mixed: refrigerationTypes.size > 1
+    };
+
+    return {
+      orderCount,
+      customerCount,
+      totalBoxes,
+      uncheckedCount,
+      uncheckedOrders,
+      unresolvedExceptionCount,
+      unresolvedExceptionOrders,
+      allergyOrders,
+      allergyCount,
+      refrigerationSummary,
+      remark: batch.remark
+    };
   }
 
   getUnbatchedReadyOrders(): Order[] {
