@@ -445,7 +445,16 @@ class App {
           }
         } else {
           const checker = prompt('请输入核对人姓名（可选）：') || undefined;
-          orderStore.updateStatus(ids, status, checker);
+          const validIds = ids.filter((id) => !orderStore.getActiveException(id));
+          const skippedCount = ids.length - validIds.length;
+          if (validIds.length === 0) {
+            alert(`所选订单均存在活跃异常，需先解决并恢复流转后才能修改状态`);
+            return;
+          }
+          if (skippedCount > 0) {
+            console.warn(`已跳过 ${skippedCount} 个有活跃异常的订单`);
+          }
+          orderStore.updateStatus(validIds, status, checker);
         }
         this.selectedIds.clear();
       });
@@ -856,7 +865,12 @@ class App {
       checkbox.type = 'checkbox';
       checkbox.className = 'shipping-checkbox';
       checkbox.checked = isChecked;
+      if (activeException) {
+        checkbox.disabled = true;
+        checkbox.title = '异常订单需先解决并恢复流转后方可勾选出货';
+      }
       checkbox.addEventListener('change', () => {
+        if (activeException) return;
         if (checkbox.checked) {
           this.shippingChecked.add(order.id);
         } else {
@@ -903,6 +917,15 @@ class App {
         excMeta.className = 'exception-meta';
         excMeta.textContent = `责任人：${activeException.responsible || '未指派'} · 登记：${this.formatDateTime(activeException.createdAt)}`;
         excBanner.append(excBadge, ' ', excCat, excReason, excMeta);
+        const createdTime = new Date(activeException.createdAt).getTime();
+        const updatedTime = new Date(activeException.updatedAt).getTime();
+        if (activeException.status !== 'pending' && updatedTime > createdTime) {
+          const excProcessTime = document.createElement('div');
+          excProcessTime.className = 'exception-meta';
+          excProcessTime.style.color = '#b45309';
+          excProcessTime.textContent = `⏱ 处理时间：${this.formatDateTime(activeException.updatedAt)}`;
+          excBanner.appendChild(excProcessTime);
+        }
         if (activeException.handlerRemark) {
           const excRemark = document.createElement('div');
           excRemark.className = 'exception-remark';
@@ -1174,6 +1197,13 @@ class App {
           if ((!curSt && val === 'pending_pack') || curSt === val) o.selected = true;
           sel.appendChild(o);
         });
+        if (isEdit && this.editingOrder) {
+          const active = orderStore.getActiveException(this.editingOrder.id);
+          if (active) {
+            sel.disabled = true;
+            sel.title = '存在活跃异常，需先解决并恢复流转后才能修改订单状态';
+          }
+        }
         return sel;
       })()
     );
@@ -1240,6 +1270,17 @@ class App {
           `;
 
           itemBody.append(reasonP, metaP);
+
+          const createdT = new Date(r.createdAt).getTime();
+          const updatedT = new Date(r.updatedAt).getTime();
+          if (r.status !== 'pending' && updatedT > createdT) {
+            const processP = document.createElement('div');
+            processP.className = 'timeline-meta';
+            processP.style.color = '#b45309';
+            processP.style.marginTop = '4px';
+            processP.innerHTML = `<span>⏱ 处理时间：${this.formatDateTime(r.updatedAt)}</span>`;
+            itemBody.appendChild(processP);
+          }
 
           if (r.handlerRemark) {
             const remarkP = document.createElement('div');
@@ -1439,6 +1480,11 @@ class App {
     };
 
     if (this.editingOrder) {
+      const active = orderStore.getActiveException(this.editingOrder.id);
+      if (active && status !== 'on_hold') {
+        alert('存在活跃异常，需先解决并恢复流转后才能修改订单状态。本次保存已跳过状态修改。');
+        delete (orderData as Partial<typeof orderData>).status;
+      }
       orderStore.update(this.editingOrder.id, orderData);
     } else {
       orderStore.add(orderData);
@@ -1625,9 +1671,11 @@ class App {
         }
 
         if (isEdit && existingRecord) {
-          const updates: Partial<Pick<ExceptionRecord, 'status' | 'handlerRemark' | 'responsible'>> = {
+          const updates: Partial<Pick<ExceptionRecord, 'status' | 'handlerRemark' | 'responsible' | 'category' | 'reason'>> = {
             handlerRemark,
-            responsible
+            responsible,
+            category,
+            reason
           };
           if (newStatus) updates.status = newStatus;
 
@@ -1640,7 +1688,8 @@ class App {
           orderStore.addException(orderId, {
             category,
             reason,
-            responsible
+            responsible,
+            handlerRemark
           });
         }
 
@@ -1783,6 +1832,17 @@ class App {
         `;
 
         content.append(topRow, reasonBlock, metaBlock);
+
+        const t_created = new Date(r.createdAt).getTime();
+        const t_updated = new Date(r.updatedAt).getTime();
+        if (r.status !== 'pending' && t_updated > t_created) {
+          const processBlock = document.createElement('div');
+          processBlock.className = 'timeline-meta';
+          processBlock.style.color = '#b45309';
+          processBlock.style.marginTop = '4px';
+          processBlock.innerHTML = `<span>⏱ 处理时间：${this.formatDateTime(r.updatedAt)}</span>`;
+          content.appendChild(processBlock);
+        }
 
         if (r.handlerRemark) {
           const remarkBlock = document.createElement('div');

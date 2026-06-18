@@ -72,8 +72,16 @@ export class OrderStore {
   update(id: string, updates: Partial<Omit<Order, 'exceptionRecords'>>): Order | undefined {
     const index = this.orders.findIndex((o) => o.id === id);
     if (index === -1) return undefined;
+    const order = this.orders[index];
+    if (updates.status !== undefined) {
+      const active = this.getActiveException(id);
+      if (active && updates.status !== 'on_hold') {
+        delete updates.status;
+        console.warn(`订单 ${id} 存在活跃异常，已阻止状态修改为 ${updates.status}`);
+      }
+    }
     this.orders[index] = {
-      ...this.orders[index],
+      ...order,
       ...updates,
       updatedAt: new Date().toISOString()
     };
@@ -93,9 +101,15 @@ export class OrderStore {
 
   updateStatus(ids: string[], status: OrderStatus, checker?: string): void {
     const now = new Date().toISOString();
+    let skipped = 0;
     ids.forEach((id) => {
       const order = this.orders.find((o) => o.id === id);
       if (order) {
+        const active = this.getActiveException(id);
+        if (active && status !== 'on_hold') {
+          skipped++;
+          return;
+        }
         order.status = status;
         order.updatedAt = now;
         if (checker !== undefined) {
@@ -103,6 +117,9 @@ export class OrderStore {
         }
       }
     });
+    if (skipped > 0) {
+      console.warn(`已跳过 ${skipped} 个有活跃异常的订单`);
+    }
     this.saveToStorage();
     this.notify();
   }
@@ -113,6 +130,7 @@ export class OrderStore {
       category: ExceptionCategory;
       reason: string;
       responsible: string;
+      handlerRemark?: string;
     }
   ): ExceptionRecord | null {
     const order = this.orders.find((o) => o.id === orderId);
@@ -126,7 +144,7 @@ export class OrderStore {
       reason: data.reason,
       status: 'pending',
       responsible: data.responsible,
-      handlerRemark: '',
+      handlerRemark: data.handlerRemark || '',
       createdAt: now,
       updatedAt: now,
       previousStatus: order.status
@@ -145,7 +163,7 @@ export class OrderStore {
   updateException(
     orderId: string,
     exceptionId: string,
-    updates: Partial<Pick<ExceptionRecord, 'status' | 'handlerRemark' | 'responsible'>>
+    updates: Partial<Pick<ExceptionRecord, 'status' | 'handlerRemark' | 'responsible' | 'category' | 'reason'>>
   ): ExceptionRecord | null {
     const order = this.orders.find((o) => o.id === orderId);
     if (!order || !order.exceptionRecords) return null;
