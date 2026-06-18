@@ -289,6 +289,10 @@ body {
   background: #ef4444;
 }
 
+.status-shipped {
+  background: #6b7280;
+}
+
 .product-list {
   font-size: 13px;
 }

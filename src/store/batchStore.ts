@@ -1,4 +1,5 @@
 import type { Order, RefrigerationType, ShippingBatch, BatchStatus, BatchFilterOptions } from '../types';
+import { STATUS_LABELS } from '../types';
 import { orderStore } from './orderStore';
 
 const STORAGE_KEY = 'bakery_batches';
@@ -59,16 +60,13 @@ export class BatchStore {
     const reasons: string[] = [];
 
     if (order.status !== 'ready_ship') {
-      reasons.push(`订单状态为"${order.status}"，需先达到"可出货"状态`);
+      const statusLabel = STATUS_LABELS[order.status] || order.status;
+      reasons.push(`订单状态为"${statusLabel}"，需先达到"可出货"状态`);
     }
 
     const activeException = orderStore.getActiveException(order.id);
     if (activeException) {
       reasons.push(`存在未解决异常：${activeException.reason}`);
-    }
-
-    if (!order.checker) {
-      reasons.push('未分配核对人');
     }
 
     return {
@@ -172,6 +170,10 @@ export class BatchStore {
 
     if (batch.orderIds.includes(orderId)) return false;
 
+    if (batch.refrigeration !== 'mixed' && batch.refrigeration !== order.refrigeration) {
+      batch.refrigeration = 'mixed';
+    }
+
     batch.orderIds.push(orderId);
     batch.updatedAt = new Date().toISOString();
     this.saveToStorage();
@@ -212,7 +214,7 @@ export class BatchStore {
     batch.checkedIds = [...batch.orderIds];
 
     batch.orderIds.forEach((orderId) => {
-      orderStore.updateStatus([orderId], 'ready_ship');
+      orderStore.updateStatus([orderId], 'shipped');
     });
 
     this.saveToStorage();

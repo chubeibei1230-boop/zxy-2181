@@ -344,7 +344,8 @@ class App {
       ['pending_pack', '待装盒'],
       ['pending_review', '待复核'],
       ['ready_ship', '可出货'],
-      ['on_hold', '异常暂缓']
+      ['on_hold', '异常暂缓'],
+      ['shipped', '已出货']
     ];
     statusOptions.forEach(([val, label]) => {
       const opt = document.createElement('option');

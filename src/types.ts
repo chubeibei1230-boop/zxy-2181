@@ -1,4 +1,4 @@
-export type OrderStatus = 'pending_pack' | 'pending_review' | 'ready_ship' | 'on_hold';
+export type OrderStatus = 'pending_pack' | 'pending_review' | 'ready_ship' | 'on_hold' | 'shipped';
 
 export type ExceptionStatus = 'pending' | 'processing' | 'resolved';
 
@@ -69,7 +69,8 @@ export const STATUS_LABELS: Record<OrderStatus, string> = {
   pending_pack: '待装盒',
   pending_review: '待复核',
   ready_ship: '可出货',
-  on_hold: '异常暂缓'
+  on_hold: '异常暂缓',
+  shipped: '已出货'
 };
 
 export const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
@@ -88,7 +89,8 @@ export const STATUS_COLORS: Record<OrderStatus, string> = {
   pending_pack: '#f59e0b',
   pending_review: '#3b82f6',
   ready_ship: '#10b981',
-  on_hold: '#ef4444'
+  on_hold: '#ef4444',
+  shipped: '#6b7280'
 };
 
 export const EXCEPTION_STATUS_LABELS: Record<ExceptionStatus, string> = {
