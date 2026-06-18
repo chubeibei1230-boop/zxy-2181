@@ -146,8 +146,15 @@ export class OrderStore {
   }
 
   private generateId(): string {
-    const num = this.orders.length + 1;
-    return `ORD-${String(num).padStart(3, '0')}`;
+    let maxNum = 0;
+    this.orders.forEach((o) => {
+      const match = o.id.match(/^ORD-(\d+)$/);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxNum) maxNum = n;
+      }
+    });
+    return `ORD-${String(maxNum + 1).padStart(3, '0')}`;
   }
 }
 

@@ -1,5 +1,6 @@
 import type { Order } from '../types';
 import { STATUS_LABELS, PRODUCT_TYPE_LABELS, REFRIGERATION_LABELS } from '../types';
+import { escapeHtml, sanitizeCsvCell } from './security';
 
 export function exportToCSV(orders: Order[]): void {
   const headers = [
@@ -15,15 +16,15 @@ export function exportToCSV(orders: Order[]): void {
   ];
 
   const rows = orders.map((order) => [
-    order.id,
-    order.pickupDate,
-    order.customerName,
-    order.products.map((p) => `${p.name} x${p.quantity}`).join('；'),
-    String(order.boxQuantity),
-    order.allergyWarning || '无',
-    REFRIGERATION_LABELS[order.refrigeration],
-    order.checker || '未分配',
-    STATUS_LABELS[order.status]
+    sanitizeCsvCell(order.id),
+    sanitizeCsvCell(order.pickupDate),
+    sanitizeCsvCell(order.customerName),
+    sanitizeCsvCell(order.products.map((p) => `${p.name} x${p.quantity}`).join('；')),
+    sanitizeCsvCell(String(order.boxQuantity)),
+    sanitizeCsvCell(order.allergyWarning || '无'),
+    sanitizeCsvCell(REFRIGERATION_LABELS[order.refrigeration]),
+    sanitizeCsvCell(order.checker || '未分配'),
+    sanitizeCsvCell(STATUS_LABELS[order.status])
   ]);
 
   const csvContent = [headers, ...rows].map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -45,12 +46,35 @@ export function printOrders(orders: Order[], title: string = '订单清单'): vo
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
 
+  const safeTitle = escapeHtml(title);
+  const safePrintTime = escapeHtml(new Date().toLocaleString('zh-CN'));
+
+  const orderRowsHtml = orders.map((order) => {
+    const productsHtml = order.products
+      .map((p) => `<div>${escapeHtml(p.name)} <small>(${escapeHtml(PRODUCT_TYPE_LABELS[p.type])}) x${escapeHtml(String(p.quantity))}</small></div>`)
+      .join('');
+
+    return `
+      <tr>
+        <td><strong>${escapeHtml(order.id)}</strong></td>
+        <td>${escapeHtml(order.pickupDate)}</td>
+        <td>${escapeHtml(order.customerName)}</td>
+        <td>${productsHtml}</td>
+        <td>${escapeHtml(String(order.boxQuantity))}</td>
+        <td class="allergy">${escapeHtml(order.allergyWarning || '-')}</td>
+        <td>${escapeHtml(REFRIGERATION_LABELS[order.refrigeration])}</td>
+        <td>${escapeHtml(order.checker || '-')}</td>
+        <td><span class="status-tag ${escapeHtml(order.status)}">${escapeHtml(STATUS_LABELS[order.status])}</span></td>
+      </tr>
+    `;
+  }).join('');
+
   const html = `
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>${title}</title>
+  <title>${safeTitle}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; font-size: 14px; }
     h1 { font-size: 20px; margin-bottom: 16px; text-align: center; }
@@ -69,7 +93,7 @@ export function printOrders(orders: Order[], title: string = '订单清单'): vo
   </style>
 </head>
 <body>
-  <h1>${title}</h1>
+  <h1>${safeTitle}</h1>
   <table>
     <thead>
       <tr>
@@ -85,24 +109,10 @@ export function printOrders(orders: Order[], title: string = '订单清单'): vo
       </tr>
     </thead>
     <tbody>
-      ${orders.map((order) => `
-      <tr>
-        <td><strong>${order.id}</strong></td>
-        <td>${order.pickupDate}</td>
-        <td>${order.customerName}</td>
-        <td>
-          ${order.products.map((p) => `<div>${p.name} <small>(${PRODUCT_TYPE_LABELS[p.type]}) x${p.quantity}</small></div>`).join('')}
-        </td>
-        <td>${order.boxQuantity}</td>
-        <td class="allergy">${order.allergyWarning || '-'}</td>
-        <td>${REFRIGERATION_LABELS[order.refrigeration]}</td>
-        <td>${order.checker || '-'}</td>
-        <td><span class="status-tag ${order.status}">${STATUS_LABELS[order.status]}</span></td>
-      </tr>
-      `).join('')}
+      ${orderRowsHtml}
     </tbody>
   </table>
-  <p style="text-align: right; color: #666;">打印时间：${new Date().toLocaleString('zh-CN')}</p>
+  <p style="text-align: right; color: #666;">打印时间：${safePrintTime}</p>
 </body>
 </html>
   `;

@@ -27,12 +27,23 @@ function checkSingleOrder(order: Order, allOrders: Order[]): CheckWarning[] {
   }
 
   const totalProductQty = order.products.reduce((sum, p) => sum + p.quantity, 0);
-  if (totalProductQty !== order.boxQuantity) {
+  const productKinds = order.products.length;
+  const minBoxes = Math.max(1, Math.ceil(productKinds / 4));
+  const maxBoxes = Math.max(totalProductQty, productKinds);
+
+  if (order.boxQuantity < minBoxes) {
     warnings.push({
       orderId: order.id,
       type: 'quantity_mismatch',
-      message: `装盒数量(${order.boxQuantity})与产品总数(${totalProductQty})不一致`,
-      severity: 'error'
+      message: `装盒数量(${order.boxQuantity})偏少，产品(${productKinds}种/${totalProductQty}件)建议至少 ${minBoxes} 盒`,
+      severity: 'warning'
+    });
+  } else if (order.boxQuantity > maxBoxes * 2) {
+    warnings.push({
+      orderId: order.id,
+      type: 'quantity_mismatch',
+      message: `装盒数量(${order.boxQuantity})偏多，产品(${productKinds}种/${totalProductQty}件)建议不超过 ${maxBoxes} 盒`,
+      severity: 'warning'
     });
   }
 
