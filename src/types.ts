@@ -111,3 +111,39 @@ export const EXCEPTION_CATEGORY_LABELS: Record<ExceptionCategory, string> = {
   customer_request: '客户临时要求',
   other: '其他问题'
 };
+
+export type BatchStatus = 'created' | 'shipping' | 'completed';
+
+export interface ShippingBatch {
+  id: string;
+  pickupDate: string;
+  refrigeration: RefrigerationType | 'mixed';
+  status: BatchStatus;
+  orderIds: string[];
+  checkedIds: string[];
+  remark: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  shippedAt?: string;
+  receivedBy?: string;
+}
+
+export interface BatchFilterOptions {
+  pickupDate: string;
+  refrigeration: RefrigerationType | 'all';
+  status: BatchStatus | 'all';
+  keyword: string;
+}
+
+export const BATCH_STATUS_LABELS: Record<BatchStatus, string> = {
+  created: '待出货',
+  shipping: '出货中',
+  completed: '已出货'
+};
+
+export const BATCH_STATUS_COLORS: Record<BatchStatus, string> = {
+  created: '#3b82f6',
+  shipping: '#f59e0b',
+  completed: '#10b981'
+};
