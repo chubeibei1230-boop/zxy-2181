@@ -667,6 +667,13 @@ body {
   min-width: 110px;
 }
 
+.exception-list-time {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #b45309;
+  white-space: nowrap;
+}
+
 .exception-badge {
   display: inline-block;
   padding: 2px 8px;

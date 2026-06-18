@@ -440,6 +440,7 @@ class App {
                   reason: reason.trim(),
                   responsible
                 });
+                this.shippingChecked.delete(id);
               });
             }
           }
@@ -658,6 +659,14 @@ class App {
       excBadge.textContent = EXCEPTION_STATUS_LABELS[activeException.status];
       excBadge.title = `原因：${activeException.reason}\n责任人：${activeException.responsible || '未指派'}\n登记时间：${this.formatDateTime(activeException.createdAt)}`;
       excCell.appendChild(excBadge);
+      const createdTime = new Date(activeException.createdAt).getTime();
+      const updatedTime = new Date(activeException.updatedAt).getTime();
+      if (activeException.status !== 'pending' && updatedTime > createdTime) {
+        const processTime = document.createElement('div');
+        processTime.className = 'exception-list-time';
+        processTime.textContent = `处理：${this.formatDateTime(activeException.updatedAt)}`;
+        excCell.appendChild(processTime);
+      }
     } else if (hasHistory) {
       const resolvedBadge = document.createElement('span');
       resolvedBadge.className = 'exception-badge exception-resolved-history';
@@ -1691,6 +1700,7 @@ class App {
             responsible,
             handlerRemark
           });
+          this.shippingChecked.delete(orderId);
         }
 
         this.exceptionDialogContext = null;
