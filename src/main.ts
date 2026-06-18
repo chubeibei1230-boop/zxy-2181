@@ -10,12 +10,18 @@ import type {
   ProductType,
   RefrigerationType,
   CheckWarning,
-  ProductItem
+  ProductItem,
+  ExceptionRecord,
+  ExceptionStatus,
+  ExceptionCategory
 } from './types';
 import {
   STATUS_LABELS,
   PRODUCT_TYPE_LABELS,
-  REFRIGERATION_LABELS
+  REFRIGERATION_LABELS,
+  EXCEPTION_STATUS_LABELS,
+  EXCEPTION_STATUS_COLORS,
+  EXCEPTION_CATEGORY_LABELS
 } from './types';
 
 type ViewMode = 'list' | 'shipping';
@@ -28,10 +34,13 @@ class App {
     productType: 'all',
     checker: '',
     status: 'all',
-    refrigeration: 'all'
+    refrigeration: 'all',
+    exceptionStatus: 'all'
   };
   private shippingChecked: Set<string> = new Set();
   private editingOrder: Order | null = null;
+  private exceptionDialogContext: { orderId: string; exceptionId?: string } | null = null;
+  private exceptionHistoryOrderId: string | null = null;
 
   constructor() {
     this.render();
@@ -153,6 +162,15 @@ class App {
 
   private renderStats(): HTMLElement {
     const allOrders = orderStore.getAll();
+    const pendingExceptions = allOrders.filter((o) => {
+      const a = orderStore.getActiveException(o.id);
+      return a && a.status === 'pending';
+    }).length;
+    const processingExceptions = allOrders.filter((o) => {
+      const a = orderStore.getActiveException(o.id);
+      return a && a.status === 'processing';
+    }).length;
+
     const stats = [
       { label: '总订单数', value: allOrders.length, color: '#3b82f6', icon: '📦' },
       {
@@ -172,6 +190,18 @@ class App {
         value: allOrders.filter((o) => o.status === 'ready_ship').length,
         color: '#10b981',
         icon: '✅'
+      },
+      {
+        label: '异常待处理',
+        value: pendingExceptions,
+        color: '#ef4444',
+        icon: '🚨'
+      },
+      {
+        label: '异常处理中',
+        value: processingExceptions,
+        color: '#f97316',
+        icon: '⏳'
       }
     ];
 
@@ -320,18 +350,44 @@ class App {
     });
     refFilter.append(refLabel, refSelect);
 
+    const excFilter = document.createElement('div');
+    excFilter.className = 'filter-item';
+    const excLabel = document.createElement('label');
+    excLabel.textContent = '异常处理';
+    const excSelect = document.createElement('select');
+    const excOptions: [ExceptionStatus | 'all' | 'none', string][] = [
+      ['all', '全部'],
+      ['none', '无异常'],
+      ['pending', '待处理'],
+      ['processing', '处理中'],
+      ['resolved', '已解决']
+    ];
+    excOptions.forEach(([val, label]) => {
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = label;
+      if (this.filters.exceptionStatus === val) opt.selected = true;
+      excSelect.appendChild(opt);
+    });
+    excSelect.addEventListener('change', (e) => {
+      this.filters.exceptionStatus = (e.target as HTMLSelectElement).value as ExceptionStatus | 'all';
+      this.render();
+    });
+    excFilter.append(excLabel, excSelect);
+
     const clearBtn = this.createButton('清除筛选', 'btn-sm', () => {
       this.filters = {
         pickupDate: '',
         productType: 'all',
         checker: '',
         status: 'all',
-        refrigeration: 'all'
+        refrigeration: 'all',
+        exceptionStatus: 'all'
       };
       this.render();
     });
 
-    row.append(dateFilter, typeFilter, checkerFilter, statusFilter, refFilter, clearBtn);
+    row.append(dateFilter, typeFilter, checkerFilter, statusFilter, refFilter, excFilter, clearBtn);
     bar.appendChild(row);
 
     return bar;
@@ -371,8 +427,26 @@ class App {
           alert('请先选择当前可见的订单');
           return;
         }
-        const checker = prompt('请输入核对人姓名（可选）：') || undefined;
-        orderStore.updateStatus(ids, status, checker);
+        if (status === 'on_hold') {
+          if (ids.length === 1) {
+            this.openExceptionDialog(ids[0]);
+          } else {
+            const reason = prompt('请输入异常原因：');
+            if (reason !== null && reason.trim()) {
+              const responsible = prompt('请输入责任人：', '') || '';
+              ids.forEach((id) => {
+                orderStore.addException(id, {
+                  category: 'other',
+                  reason: reason.trim(),
+                  responsible
+                });
+              });
+            }
+          }
+        } else {
+          const checker = prompt('请输入核对人姓名（可选）：') || undefined;
+          orderStore.updateStatus(ids, status, checker);
+        }
         this.selectedIds.clear();
       });
       actions.appendChild(btn);
@@ -402,6 +476,7 @@ class App {
       <th>冷藏要求</th>
       <th>核对人</th>
       <th>状态</th>
+      <th>异常处理</th>
       <th>操作</th>
     `;
     const selectAllCell = headerRow.querySelector('.checkbox-cell')!;
@@ -426,7 +501,7 @@ class App {
     if (this.filteredOrders.length === 0) {
       const tr = document.createElement('tr');
       const td = document.createElement('td');
-      td.colSpan = 11;
+      td.colSpan = 12;
       const empty = document.createElement('div');
       empty.className = 'empty-state';
       const icon = document.createElement('div');
@@ -458,6 +533,8 @@ class App {
 
     const orderWarnings = getWarningsByOrderId(this.warnings, order.id);
     const hasError = orderWarnings.some((w) => w.severity === 'error');
+    const activeException = orderStore.getActiveException(order.id);
+    const hasHistory = (order.exceptionRecords?.length || 0) > 0;
 
     const checkboxCell = document.createElement('td');
     checkboxCell.className = 'checkbox-cell';
@@ -564,9 +641,50 @@ class App {
     statusBadge.textContent = STATUS_LABELS[order.status];
     statusCell.appendChild(statusBadge);
 
+    const excCell = document.createElement('td');
+    excCell.className = 'exception-cell';
+    if (activeException) {
+      const excBadge = document.createElement('span');
+      excBadge.className = `exception-badge exception-${activeException.status}`;
+      excBadge.textContent = EXCEPTION_STATUS_LABELS[activeException.status];
+      excBadge.title = `原因：${activeException.reason}\n责任人：${activeException.responsible || '未指派'}\n登记时间：${this.formatDateTime(activeException.createdAt)}`;
+      excCell.appendChild(excBadge);
+    } else if (hasHistory) {
+      const resolvedBadge = document.createElement('span');
+      resolvedBadge.className = 'exception-badge exception-resolved-history';
+      resolvedBadge.textContent = '已解决';
+      resolvedBadge.title = `历史异常 ${order.exceptionRecords!.filter((r) => r.status === 'resolved').length} 条`;
+      excCell.appendChild(resolvedBadge);
+    } else {
+      const empty = document.createElement('span');
+      empty.className = 'allergy-empty';
+      empty.textContent = '无';
+      excCell.appendChild(empty);
+    }
+
     const actionCell = document.createElement('td');
     const actionDiv = document.createElement('div');
     actionDiv.className = 'action-buttons';
+
+    if (!activeException) {
+      const holdBtn = this.createButton('标记异常', 'btn-sm btn-danger', () => {
+        this.openExceptionDialog(order.id);
+      });
+      actionDiv.appendChild(holdBtn);
+    } else {
+      const handleBtn = this.createButton('处理异常', 'btn-sm btn-warning', () => {
+        this.openExceptionDialog(order.id, activeException.id);
+      });
+      actionDiv.appendChild(handleBtn);
+    }
+
+    const historyBtn = this.createButton(hasHistory ? '异常记录' : '记录', 'btn-sm', () => {
+      this.openExceptionHistory(order.id);
+    });
+    if (!hasHistory) {
+      historyBtn.style.opacity = '0.6';
+    }
+    actionDiv.appendChild(historyBtn);
 
     const editBtn = this.createButton('编辑', 'btn-sm', () => this.openOrderModal(order));
     const deleteBtn = this.createButton('删除', 'btn-sm', () => {
@@ -582,10 +700,20 @@ class App {
 
     tr.append(
       checkboxCell, idCell, dateCell, customerCell, productCell,
-      boxQtyCell, allergyCell, refCell, checkerCell, statusCell, actionCell
+      boxQtyCell, allergyCell, refCell, checkerCell, statusCell, excCell, actionCell
     );
 
     return tr;
+  }
+
+  private formatDateTime(iso: string): string {
+    try {
+      const d = new Date(iso);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch {
+      return iso;
+    }
   }
 
   private isAllSelected(): boolean {
@@ -722,6 +850,7 @@ class App {
       }
 
       const orderWarnings = getWarningsByOrderId(this.warnings, order.id);
+      const activeException = orderStore.getActiveException(order.id);
 
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
@@ -757,6 +886,31 @@ class App {
 
       const headerLine = document.createElement('div');
       headerLine.append(stepNum, orderId, dash, custName, statusBadge);
+
+      if (activeException) {
+        const excBanner = document.createElement('div');
+        excBanner.className = `exception-banner exception-banner-${activeException.status}`;
+        const excBadge = document.createElement('span');
+        excBadge.className = `exception-badge exception-${activeException.status}`;
+        excBadge.textContent = EXCEPTION_STATUS_LABELS[activeException.status];
+        const excCat = document.createElement('span');
+        excCat.className = 'exception-cat';
+        excCat.textContent = EXCEPTION_CATEGORY_LABELS[activeException.category];
+        const excReason = document.createElement('div');
+        excReason.className = 'exception-reason';
+        excReason.textContent = `原因：${activeException.reason}`;
+        const excMeta = document.createElement('div');
+        excMeta.className = 'exception-meta';
+        excMeta.textContent = `责任人：${activeException.responsible || '未指派'} · 登记：${this.formatDateTime(activeException.createdAt)}`;
+        excBanner.append(excBadge, ' ', excCat, excReason, excMeta);
+        if (activeException.handlerRemark) {
+          const excRemark = document.createElement('div');
+          excRemark.className = 'exception-remark';
+          excRemark.textContent = `处理进展：${activeException.handlerRemark}`;
+          excBanner.appendChild(excRemark);
+        }
+        headerLine.appendChild(excBanner);
+      }
 
       const metaP = document.createElement('p');
       metaP.innerHTML =
@@ -806,21 +960,38 @@ class App {
       actionDiv.style.marginTop = '8px';
       actionDiv.style.display = 'flex';
       actionDiv.style.gap = '6px';
+      actionDiv.style.flexWrap = 'wrap';
 
-      const shipBtn = this.createButton('✓ 标记可出货', 'btn-sm btn-success', () => {
-        const checker = prompt('请输入核对人姓名：', order.checker) || order.checker;
-        orderStore.updateStatus([order.id], 'ready_ship', checker);
-      });
-      const holdBtn = this.createButton('⏸ 异常暂缓', 'btn-sm btn-danger', () => {
-        const reason = prompt('请输入异常原因：');
-        if (reason !== null) {
-          orderStore.updateStatus([order.id], 'on_hold', order.checker);
+      if (!activeException) {
+        const shipBtn = this.createButton('✓ 标记可出货', 'btn-sm btn-success', () => {
+          const checker = prompt('请输入核对人姓名：', order.checker) || order.checker;
+          orderStore.updateStatus([order.id], 'ready_ship', checker);
+        });
+        const holdBtn = this.createButton('⏸ 异常暂缓', 'btn-sm btn-danger', () => {
+          this.openExceptionDialog(order.id);
+        });
+        actionDiv.append(shipBtn, holdBtn);
+      } else {
+        const handleBtn = this.createButton('📝 处理异常', 'btn-sm btn-warning', () => {
+          this.openExceptionDialog(order.id, activeException.id);
+        });
+        const historyBtn = this.createButton('📋 异常记录', 'btn-sm', () => {
+          this.openExceptionHistory(order.id);
+        });
+        if (activeException.status !== 'resolved') {
+          const resolveBtn = this.createButton('✅ 解决并恢复流转', 'btn-sm btn-success', () => {
+            const remark = prompt('请输入解决备注（说明处理结果）：') || '';
+            orderStore.resolveExceptionAndRestore(order.id, activeException.id, remark);
+          });
+          actionDiv.appendChild(resolveBtn);
         }
-      });
+        actionDiv.append(handleBtn, historyBtn);
+      }
+
       const editBtn = this.createButton('编辑', 'btn-sm', () => {
         this.openOrderModal(order);
       });
-      actionDiv.append(shipBtn, holdBtn, editBtn);
+      actionDiv.appendChild(editBtn);
       content.appendChild(actionDiv);
 
       item.append(checkbox, content);
@@ -1011,6 +1182,111 @@ class App {
     form.append(grid1, fgProducts, grid2, fgAllergy, grid3);
     body.appendChild(form);
 
+    if (isEdit && this.editingOrder) {
+      const records = this.editingOrder.exceptionRecords || [];
+      if (records.length > 0) {
+        const excSection = document.createElement('div');
+        excSection.className = 'edit-exception-section';
+
+        const excHeader = document.createElement('div');
+        excHeader.className = 'edit-exception-header';
+        const excTitle = document.createElement('h3');
+        excTitle.textContent = '📋 异常处理记录';
+        const excCount = document.createElement('span');
+        excCount.style.fontSize = '13px';
+        excCount.style.color = '#6b7280';
+        excCount.style.marginLeft = '8px';
+        const resolvedCount = records.filter((r) => r.status === 'resolved').length;
+        const activeCount = records.length - resolvedCount;
+        excCount.textContent = `共 ${records.length} 条（${activeCount} 条活跃，${resolvedCount} 条已解决）`;
+        excHeader.append(excTitle, excCount);
+        excSection.appendChild(excHeader);
+
+        const excList = document.createElement('div');
+        excList.className = 'edit-exception-list';
+
+        const sortedRecords = [...records].sort((a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+
+        sortedRecords.forEach((r) => {
+          const item = document.createElement('div');
+          item.className = `edit-exception-item edit-exception-${r.status}`;
+
+          const itemHeader = document.createElement('div');
+          itemHeader.className = 'edit-exception-item-header';
+          const badge = document.createElement('span');
+          badge.className = `exception-badge exception-${r.status}`;
+          badge.textContent = EXCEPTION_STATUS_LABELS[r.status];
+          const cat = document.createElement('span');
+          cat.className = 'exception-cat-badge';
+          cat.textContent = EXCEPTION_CATEGORY_LABELS[r.category];
+          const time = document.createElement('span');
+          time.className = 'timeline-time';
+          time.textContent = this.formatDateTime(r.createdAt);
+          itemHeader.append(badge, ' ', cat, time);
+
+          const itemBody = document.createElement('div');
+          itemBody.className = 'edit-exception-item-body';
+
+          const reasonP = document.createElement('div');
+          reasonP.innerHTML = `<span class="timeline-label">原因：</span>${escapeHtml(r.reason)}`;
+
+          const metaP = document.createElement('div');
+          metaP.className = 'timeline-meta';
+          metaP.innerHTML = `
+            <span>👤 责任人：${escapeHtml(r.responsible || '未指派')}</span>
+            <span>↩️ 原状态：${STATUS_LABELS[r.previousStatus]}</span>
+          `;
+
+          itemBody.append(reasonP, metaP);
+
+          if (r.handlerRemark) {
+            const remarkP = document.createElement('div');
+            remarkP.className = 'timeline-block timeline-remark';
+            remarkP.style.marginTop = '6px';
+            remarkP.innerHTML = `<span class="timeline-label">处理进展：</span>${escapeHtml(r.handlerRemark)}`;
+            itemBody.appendChild(remarkP);
+          }
+          if (r.resolvedAt) {
+            const resolvedP = document.createElement('div');
+            resolvedP.className = 'timeline-block timeline-resolved';
+            resolvedP.style.marginTop = '6px';
+            resolvedP.innerHTML = `<span class="timeline-label">解决时间：</span>${this.formatDateTime(r.resolvedAt)}`;
+            itemBody.appendChild(resolvedP);
+          }
+
+          if (r.status !== 'resolved' && this.editingOrder) {
+            const currentOrderId = this.editingOrder.id;
+            const actions = document.createElement('div');
+            actions.style.marginTop = '8px';
+            actions.style.display = 'flex';
+            actions.style.gap = '6px';
+
+            const handleBtn = this.createButton('📝 处理', 'btn-sm btn-warning', () => {
+              overlay.remove();
+              this.editingOrder = null;
+              this.openExceptionDialog(currentOrderId, r.id);
+            });
+            const resolveBtn = this.createButton('✅ 解决恢复', 'btn-sm btn-success', () => {
+              const remark = prompt('请输入解决备注：') || '';
+              orderStore.resolveExceptionAndRestore(currentOrderId, r.id, remark);
+              overlay.remove();
+              this.editingOrder = null;
+            });
+            actions.append(handleBtn, resolveBtn);
+            itemBody.appendChild(actions);
+          }
+
+          item.append(itemHeader, itemBody);
+          excList.appendChild(item);
+        });
+
+        excSection.appendChild(excList);
+        body.appendChild(excSection);
+      }
+    }
+
     const footer = document.createElement('div');
     footer.className = 'modal-footer';
 
@@ -1170,6 +1446,407 @@ class App {
 
     this.editingOrder = null;
     overlay.remove();
+  }
+
+  private openExceptionDialog(orderId: string, exceptionId?: string): void {
+    this.exceptionDialogContext = { orderId, exceptionId };
+    this.renderExceptionDialog();
+  }
+
+  private renderExceptionDialog(): void {
+    if (!this.exceptionDialogContext) return;
+
+    const existing = document.querySelector('.exception-modal-overlay');
+    if (existing) existing.remove();
+
+    const { orderId, exceptionId } = this.exceptionDialogContext;
+    const order = orderStore.getById(orderId);
+    if (!order) return;
+
+    const isEdit = !!exceptionId;
+    const existingRecord = isEdit ? order.exceptionRecords?.find((r) => r.id === exceptionId) : null;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay exception-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal exception-modal';
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+    const h2 = document.createElement('h2');
+    h2.textContent = isEdit ? '处理异常' : '登记异常';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'modal-close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.onclick = () => {
+      this.exceptionDialogContext = null;
+      overlay.remove();
+    };
+    header.append(h2, closeBtn);
+
+    const body = document.createElement('div');
+    body.className = 'modal-body';
+
+    const orderInfo = document.createElement('div');
+    orderInfo.className = 'exception-order-info';
+    orderInfo.innerHTML = `
+      <strong>${escapeHtml(order.id)}</strong> - ${escapeHtml(order.customerName)}
+      <span style="color:#6b7280;margin-left:8px">取货：${escapeHtml(order.pickupDate)}</span>
+    `;
+    body.appendChild(orderInfo);
+
+    const form = document.createElement('form');
+    form.id = 'exception-form';
+
+    const categoryFg = this.createFormGroup(
+      '异常类型 *',
+      (() => {
+        const sel = document.createElement('select');
+        sel.name = 'category';
+        sel.required = true;
+        const opts: [ExceptionCategory, string][] = [
+          ['product_issue', '产品问题'],
+          ['quantity_issue', '数量不符'],
+          ['allergy_issue', '过敏信息问题'],
+          ['refrigeration_issue', '冷藏要求冲突'],
+          ['customer_request', '客户临时要求'],
+          ['other', '其他问题']
+        ];
+        opts.forEach(([val, label]) => {
+          const o = document.createElement('option');
+          o.value = val;
+          o.textContent = label;
+          if (existingRecord?.category === val) o.selected = true;
+          sel.appendChild(o);
+        });
+        return sel;
+      })()
+    );
+
+    const reasonFg = this.createFormGroup(
+      '异常原因 *',
+      (() => {
+        const ta = document.createElement('textarea');
+        ta.name = 'reason';
+        ta.required = true;
+        ta.rows = 3;
+        ta.maxLength = 500;
+        ta.placeholder = '请详细描述异常情况，便于后续处理和追溯';
+        ta.value = existingRecord?.reason || '';
+        return ta;
+      })()
+    );
+
+    const grid = document.createElement('div');
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = '1fr 1fr';
+    grid.style.gap = '12px';
+
+    const responsibleFg = this.createFormGroup(
+      '责任人 *',
+      (() => {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.name = 'responsible';
+        inp.required = true;
+        inp.maxLength = 20;
+        inp.placeholder = '如：小张';
+        inp.value = existingRecord?.responsible || '';
+        return inp;
+      })()
+    );
+
+    let statusFg: HTMLElement | null = null;
+    if (isEdit) {
+      statusFg = this.createFormGroup(
+        '处理状态',
+        (() => {
+          const sel = document.createElement('select');
+          sel.name = 'exceptionStatus';
+          const opts: [ExceptionStatus, string][] = [
+            ['pending', '待处理'],
+            ['processing', '处理中'],
+            ['resolved', '已解决']
+          ];
+          opts.forEach(([val, label]) => {
+            const o = document.createElement('option');
+            o.value = val;
+            o.textContent = label;
+            if (existingRecord?.status === val) o.selected = true;
+            sel.appendChild(o);
+          });
+          return sel;
+        })()
+      );
+      grid.append(responsibleFg, statusFg);
+    } else {
+      grid.append(responsibleFg);
+    }
+
+    const remarkFg = this.createFormGroup(
+      isEdit ? '处理进展/备注' : '备注（可选）',
+      (() => {
+        const ta = document.createElement('textarea');
+        ta.name = 'handlerRemark';
+        ta.rows = 2;
+        ta.maxLength = 500;
+        ta.placeholder = isEdit ? '请记录当前处理进展或解决方案' : '补充说明';
+        ta.value = existingRecord?.handlerRemark || '';
+        return ta;
+      })()
+    );
+
+    form.append(categoryFg, reasonFg, grid, remarkFg);
+    body.appendChild(form);
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+
+    const cancelBtn = this.createButton('取消', '', () => {
+      this.exceptionDialogContext = null;
+      overlay.remove();
+    });
+
+    const saveBtn = this.createButton(
+      isEdit ? '保存处理' : '确认登记',
+      'btn-primary',
+      () => {
+        const formData = new FormData(form);
+        const category = (formData.get('category') as ExceptionCategory) || 'other';
+        const reason = (formData.get('reason') as string).trim();
+        const responsible = (formData.get('responsible') as string).trim().slice(0, 20);
+        const handlerRemark = (formData.get('handlerRemark') as string).trim().slice(0, 500);
+        const newStatus = isEdit ? (formData.get('exceptionStatus') as ExceptionStatus) : null;
+
+        if (!reason || !responsible) {
+          alert('请填写必填项：异常原因、责任人');
+          return;
+        }
+
+        if (isEdit && existingRecord) {
+          const updates: Partial<Pick<ExceptionRecord, 'status' | 'handlerRemark' | 'responsible'>> = {
+            handlerRemark,
+            responsible
+          };
+          if (newStatus) updates.status = newStatus;
+
+          if (newStatus === 'resolved') {
+            orderStore.resolveExceptionAndRestore(orderId, existingRecord.id, handlerRemark || '已解决');
+          } else {
+            orderStore.updateException(orderId, existingRecord.id, updates);
+          }
+        } else {
+          orderStore.addException(orderId, {
+            category,
+            reason,
+            responsible
+          });
+        }
+
+        this.exceptionDialogContext = null;
+        overlay.remove();
+      }
+    );
+
+    footer.append(cancelBtn, saveBtn);
+
+    modal.append(header, body, footer);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        this.exceptionDialogContext = null;
+        overlay.remove();
+      }
+    });
+  }
+
+  private openExceptionHistory(orderId: string): void {
+    this.exceptionHistoryOrderId = orderId;
+    this.renderExceptionHistoryDialog();
+  }
+
+  private renderExceptionHistoryDialog(): void {
+    if (!this.exceptionHistoryOrderId) return;
+
+    const existing = document.querySelector('.history-modal-overlay');
+    if (existing) existing.remove();
+
+    const orderId = this.exceptionHistoryOrderId;
+    const order = orderStore.getById(orderId);
+    if (!order) return;
+
+    const records = order.exceptionRecords || [];
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay history-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal history-modal';
+    modal.style.maxWidth = '640px';
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+    const h2 = document.createElement('h2');
+    h2.textContent = '异常处理记录';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'modal-close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.onclick = () => {
+      this.exceptionHistoryOrderId = null;
+      overlay.remove();
+    };
+    header.append(h2, closeBtn);
+
+    const body = document.createElement('div');
+    body.className = 'modal-body';
+
+    const orderInfo = document.createElement('div');
+    orderInfo.className = 'exception-order-info';
+    orderInfo.innerHTML = `
+      <strong>${escapeHtml(order.id)}</strong> - ${escapeHtml(order.customerName)}
+      <span style="color:#6b7280;margin-left:8px">取货：${escapeHtml(order.pickupDate)}</span>
+    `;
+    body.appendChild(orderInfo);
+
+    if (records.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.style.padding = '40px 20px';
+      const icon = document.createElement('div');
+      icon.style.fontSize = '40px';
+      icon.textContent = '✅';
+      const msg = document.createElement('p');
+      msg.textContent = '该订单暂无异常记录';
+      empty.append(icon, msg);
+      body.appendChild(empty);
+    } else {
+      const timeline = document.createElement('div');
+      timeline.className = 'exception-timeline';
+
+      const sortedRecords = [...records].sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      sortedRecords.forEach((r) => {
+        const item = document.createElement('div');
+        item.className = `timeline-item timeline-${r.status}`;
+
+        const dot = document.createElement('div');
+        dot.className = 'timeline-dot';
+        dot.style.background = EXCEPTION_STATUS_COLORS[r.status];
+
+        const content = document.createElement('div');
+        content.className = 'timeline-content';
+
+        const topRow = document.createElement('div');
+        topRow.style.display = 'flex';
+        topRow.style.justifyContent = 'space-between';
+        topRow.style.alignItems = 'center';
+        topRow.style.marginBottom = '8px';
+        topRow.style.flexWrap = 'wrap';
+        topRow.style.gap = '6px';
+
+        const leftGroup = document.createElement('div');
+        leftGroup.style.display = 'flex';
+        leftGroup.style.alignItems = 'center';
+        leftGroup.style.gap = '6px';
+        leftGroup.style.flexWrap = 'wrap';
+
+        const statusBadge = document.createElement('span');
+        statusBadge.className = `exception-badge exception-${r.status}`;
+        statusBadge.textContent = EXCEPTION_STATUS_LABELS[r.status];
+
+        const catBadge = document.createElement('span');
+        catBadge.className = 'exception-cat-badge';
+        catBadge.textContent = EXCEPTION_CATEGORY_LABELS[r.category];
+
+        leftGroup.append(statusBadge, catBadge);
+
+        const rightGroup = document.createElement('div');
+        rightGroup.className = 'timeline-time';
+        rightGroup.textContent = this.formatDateTime(r.createdAt);
+
+        topRow.append(leftGroup, rightGroup);
+
+        const reasonBlock = document.createElement('div');
+        reasonBlock.className = 'timeline-block';
+        reasonBlock.innerHTML = `<span class="timeline-label">异常原因：</span>${escapeHtml(r.reason)}`;
+
+        const metaBlock = document.createElement('div');
+        metaBlock.className = 'timeline-meta';
+        metaBlock.innerHTML = `
+          <span>👤 责任人：${escapeHtml(r.responsible || '未指派')}</span>
+          <span>↩️ 原状态：${STATUS_LABELS[r.previousStatus]}</span>
+        `;
+
+        content.append(topRow, reasonBlock, metaBlock);
+
+        if (r.handlerRemark) {
+          const remarkBlock = document.createElement('div');
+          remarkBlock.className = 'timeline-block timeline-remark';
+          remarkBlock.innerHTML = `<span class="timeline-label">处理进展：</span>${escapeHtml(r.handlerRemark)}`;
+          content.appendChild(remarkBlock);
+        }
+
+        if (r.resolvedAt) {
+          const resolvedBlock = document.createElement('div');
+          resolvedBlock.className = 'timeline-block timeline-resolved';
+          resolvedBlock.innerHTML = `<span class="timeline-label">解决时间：</span>${this.formatDateTime(r.resolvedAt)}`;
+          content.appendChild(resolvedBlock);
+        }
+
+        if (r.status !== 'resolved') {
+          const actionRow = document.createElement('div');
+          actionRow.style.marginTop = '10px';
+          actionRow.style.display = 'flex';
+          actionRow.style.gap = '6px';
+
+          const handleBtn = this.createButton('📝 继续处理', 'btn-sm btn-warning', () => {
+            overlay.remove();
+            this.exceptionHistoryOrderId = null;
+            this.openExceptionDialog(orderId, r.id);
+          });
+
+          const resolveBtn = this.createButton('✅ 解决并恢复', 'btn-sm btn-success', () => {
+            const remark = prompt('请输入解决备注（说明处理结果）：') || '';
+            orderStore.resolveExceptionAndRestore(orderId, r.id, remark);
+            overlay.remove();
+            this.exceptionHistoryOrderId = null;
+          });
+
+          actionRow.append(handleBtn, resolveBtn);
+          content.appendChild(actionRow);
+        }
+
+        item.append(dot, content);
+        timeline.appendChild(item);
+      });
+
+      body.appendChild(timeline);
+    }
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+
+    const closeBtn2 = this.createButton('关闭', '', () => {
+      this.exceptionHistoryOrderId = null;
+      overlay.remove();
+    });
+    footer.appendChild(closeBtn2);
+
+    modal.append(header, body, footer);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        this.exceptionHistoryOrderId = null;
+        overlay.remove();
+      }
+    });
   }
 
   private createButton(text: string, className: string, onClick: () => void): HTMLButtonElement {

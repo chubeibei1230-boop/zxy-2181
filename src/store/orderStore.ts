@@ -1,4 +1,4 @@
-import type { Order, OrderStatus, FilterOptions } from '../types';
+import type { Order, OrderStatus, FilterOptions, ExceptionRecord, ExceptionStatus, ExceptionCategory } from '../types';
 import { mockOrders } from '../data/mockData';
 
 const STORAGE_KEY = 'bakery_orders';
@@ -15,7 +15,11 @@ export class OrderStore {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        this.orders = JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        this.orders = parsed.map((o: Order) => ({
+          ...o,
+          exceptionRecords: o.exceptionRecords || []
+        }));
       } else {
         this.orders = [...mockOrders];
         this.saveToStorage();
@@ -50,13 +54,14 @@ export class OrderStore {
     return this.orders.find((o) => o.id === id);
   }
 
-  add(order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>): Order {
+  add(order: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'exceptionRecords'>): Order {
     const now = new Date().toISOString();
     const newOrder: Order = {
       ...order,
       id: this.generateId(),
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      exceptionRecords: []
     };
     this.orders.push(newOrder);
     this.saveToStorage();
@@ -64,7 +69,7 @@ export class OrderStore {
     return newOrder;
   }
 
-  update(id: string, updates: Partial<Order>): Order | undefined {
+  update(id: string, updates: Partial<Omit<Order, 'exceptionRecords'>>): Order | undefined {
     const index = this.orders.findIndex((o) => o.id === id);
     if (index === -1) return undefined;
     this.orders[index] = {
@@ -102,6 +107,102 @@ export class OrderStore {
     this.notify();
   }
 
+  addException(
+    orderId: string,
+    data: {
+      category: ExceptionCategory;
+      reason: string;
+      responsible: string;
+    }
+  ): ExceptionRecord | null {
+    const order = this.orders.find((o) => o.id === orderId);
+    if (!order) return null;
+
+    const now = new Date().toISOString();
+    const record: ExceptionRecord = {
+      id: this.generateExceptionId(),
+      orderId,
+      category: data.category,
+      reason: data.reason,
+      status: 'pending',
+      responsible: data.responsible,
+      handlerRemark: '',
+      createdAt: now,
+      updatedAt: now,
+      previousStatus: order.status
+    };
+
+    order.exceptionRecords = order.exceptionRecords || [];
+    order.exceptionRecords.push(record);
+    order.status = 'on_hold';
+    order.updatedAt = now;
+
+    this.saveToStorage();
+    this.notify();
+    return record;
+  }
+
+  updateException(
+    orderId: string,
+    exceptionId: string,
+    updates: Partial<Pick<ExceptionRecord, 'status' | 'handlerRemark' | 'responsible'>>
+  ): ExceptionRecord | null {
+    const order = this.orders.find((o) => o.id === orderId);
+    if (!order || !order.exceptionRecords) return null;
+
+    const record = order.exceptionRecords.find((r) => r.id === exceptionId);
+    if (!record) return null;
+
+    const now = new Date().toISOString();
+    Object.assign(record, updates, { updatedAt: now });
+
+    if (updates.status === 'resolved') {
+      record.resolvedAt = now;
+    }
+
+    order.updatedAt = now;
+    this.saveToStorage();
+    this.notify();
+    return record;
+  }
+
+  resolveExceptionAndRestore(
+    orderId: string,
+    exceptionId: string,
+    handlerRemark: string
+  ): boolean {
+    const order = this.orders.find((o) => o.id === orderId);
+    if (!order || !order.exceptionRecords) return false;
+
+    const record = order.exceptionRecords.find((r) => r.id === exceptionId);
+    if (!record) return false;
+
+    const now = new Date().toISOString();
+    record.status = 'resolved';
+    record.handlerRemark = handlerRemark;
+    record.updatedAt = now;
+    record.resolvedAt = now;
+
+    const restoreStatus = record.previousStatus === 'on_hold' ? 'pending_review' : record.previousStatus;
+    order.status = restoreStatus;
+    order.updatedAt = now;
+
+    this.saveToStorage();
+    this.notify();
+    return true;
+  }
+
+  getActiveException(orderId: string): ExceptionRecord | undefined {
+    const order = this.orders.find((o) => o.id === orderId);
+    if (!order || !order.exceptionRecords) return undefined;
+    return order.exceptionRecords.find((r) => r.status !== 'resolved');
+  }
+
+  getExceptionStatus(orderId: string): ExceptionStatus | 'none' {
+    const active = this.getActiveException(orderId);
+    return active ? active.status : 'none';
+  }
+
   filter(options: FilterOptions): Order[] {
     return this.orders.filter((order) => {
       if (options.pickupDate && order.pickupDate !== options.pickupDate) {
@@ -120,6 +221,17 @@ export class OrderStore {
       }
       if (options.refrigeration !== 'all' && order.refrigeration !== options.refrigeration) {
         return false;
+      }
+      if (options.exceptionStatus !== 'all') {
+        const active = this.getActiveException(order.id);
+        if (options.exceptionStatus === 'none') {
+          if (active) return false;
+        } else if (options.exceptionStatus === 'resolved') {
+          const hasResolved = order.exceptionRecords?.some((r) => r.status === 'resolved');
+          if (!hasResolved) return false;
+        } else {
+          if (!active || active.status !== options.exceptionStatus) return false;
+        }
       }
       return true;
     });
@@ -155,6 +267,20 @@ export class OrderStore {
       }
     });
     return `ORD-${String(maxNum + 1).padStart(3, '0')}`;
+  }
+
+  private generateExceptionId(): string {
+    let maxNum = 0;
+    this.orders.forEach((o) => {
+      o.exceptionRecords?.forEach((r) => {
+        const match = r.id.match(/^EXC-(\d+)$/);
+        if (match) {
+          const n = parseInt(match[1], 10);
+          if (n > maxNum) maxNum = n;
+        }
+      });
+    });
+    return `EXC-${String(maxNum + 1).padStart(3, '0')}`;
   }
 }
 

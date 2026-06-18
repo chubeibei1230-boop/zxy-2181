@@ -15,7 +15,8 @@ export const mockOrders: Order[] = [
     checker: '小李',
     status: 'pending_pack',
     createdAt: '2026-06-18T09:00:00Z',
-    updatedAt: '2026-06-18T09:00:00Z'
+    updatedAt: '2026-06-18T09:00:00Z',
+    exceptionRecords: []
   },
   {
     id: 'ORD-002',
@@ -31,7 +32,22 @@ export const mockOrders: Order[] = [
     checker: '小王',
     status: 'pending_review',
     createdAt: '2026-06-18T10:30:00Z',
-    updatedAt: '2026-06-18T14:00:00Z'
+    updatedAt: '2026-06-18T14:00:00Z',
+    exceptionRecords: [
+      {
+        id: 'EXC-001',
+        orderId: 'ORD-002',
+        category: 'allergy_issue',
+        reason: '订单未填写过敏信息，需联系客户确认',
+        status: 'resolved',
+        responsible: '小王',
+        handlerRemark: '已联系客户确认无特殊过敏史，客户确认无误',
+        createdAt: '2026-06-18T11:00:00Z',
+        updatedAt: '2026-06-18T13:00:00Z',
+        resolvedAt: '2026-06-18T13:00:00Z',
+        previousStatus: 'pending_pack'
+      }
+    ]
   },
   {
     id: 'ORD-003',
@@ -46,7 +62,8 @@ export const mockOrders: Order[] = [
     checker: '小李',
     status: 'ready_ship',
     createdAt: '2026-06-17T11:00:00Z',
-    updatedAt: '2026-06-18T16:00:00Z'
+    updatedAt: '2026-06-18T16:00:00Z',
+    exceptionRecords: []
   },
   {
     id: 'ORD-004',
@@ -61,7 +78,21 @@ export const mockOrders: Order[] = [
     checker: '',
     status: 'on_hold',
     createdAt: '2026-06-18T13:00:00Z',
-    updatedAt: '2026-06-18T13:30:00Z'
+    updatedAt: '2026-06-18T13:30:00Z',
+    exceptionRecords: [
+      {
+        id: 'EXC-002',
+        orderId: 'ORD-004',
+        category: 'product_issue',
+        reason: '芒果慕斯蛋糕库存不足，需确认是否替换其他口味',
+        status: 'processing',
+        responsible: '小张',
+        handlerRemark: '正在联系客户确认是否更换为草莓慕斯，客户电话暂未接通',
+        createdAt: '2026-06-18T13:30:00Z',
+        updatedAt: '2026-06-18T15:00:00Z',
+        previousStatus: 'pending_review'
+      }
+    ]
   },
   {
     id: 'ORD-005',
@@ -77,7 +108,8 @@ export const mockOrders: Order[] = [
     checker: '小王',
     status: 'pending_pack',
     createdAt: '2026-06-16T15:00:00Z',
-    updatedAt: '2026-06-17T10:00:00Z'
+    updatedAt: '2026-06-17T10:00:00Z',
+    exceptionRecords: []
   },
   {
     id: 'ORD-006',
@@ -92,7 +124,8 @@ export const mockOrders: Order[] = [
     checker: '小李',
     status: 'pending_review',
     createdAt: '2026-06-18T08:00:00Z',
-    updatedAt: '2026-06-18T12:00:00Z'
+    updatedAt: '2026-06-18T12:00:00Z',
+    exceptionRecords: []
   },
   {
     id: 'ORD-007',
@@ -109,7 +142,8 @@ export const mockOrders: Order[] = [
     checker: '小张',
     status: 'ready_ship',
     createdAt: '2026-06-15T09:00:00Z',
-    updatedAt: '2026-06-18T17:00:00Z'
+    updatedAt: '2026-06-18T17:00:00Z',
+    exceptionRecords: []
   },
   {
     id: 'ORD-008',
@@ -124,6 +158,7 @@ export const mockOrders: Order[] = [
     checker: '小王',
     status: 'pending_pack',
     createdAt: '2026-06-17T14:00:00Z',
-    updatedAt: '2026-06-17T14:00:00Z'
+    updatedAt: '2026-06-17T14:00:00Z',
+    exceptionRecords: []
   }
 ];

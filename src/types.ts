@@ -1,8 +1,32 @@
 export type OrderStatus = 'pending_pack' | 'pending_review' | 'ready_ship' | 'on_hold';
 
+export type ExceptionStatus = 'pending' | 'processing' | 'resolved';
+
 export type ProductType = 'cake' | 'cookie' | 'giftbox';
 
 export type RefrigerationType = 'none' | 'chilled' | 'frozen';
+
+export type ExceptionCategory =
+  | 'product_issue'
+  | 'quantity_issue'
+  | 'allergy_issue'
+  | 'refrigeration_issue'
+  | 'customer_request'
+  | 'other';
+
+export interface ExceptionRecord {
+  id: string;
+  orderId: string;
+  category: ExceptionCategory;
+  reason: string;
+  status: ExceptionStatus;
+  responsible: string;
+  handlerRemark: string;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  previousStatus: OrderStatus;
+}
 
 export interface ProductItem {
   name: string;
@@ -22,6 +46,7 @@ export interface Order {
   status: OrderStatus;
   createdAt: string;
   updatedAt: string;
+  exceptionRecords: ExceptionRecord[];
 }
 
 export interface FilterOptions {
@@ -30,6 +55,7 @@ export interface FilterOptions {
   checker: string;
   status: OrderStatus | 'all';
   refrigeration: RefrigerationType | 'all';
+  exceptionStatus: ExceptionStatus | 'all' | 'none';
 }
 
 export interface CheckWarning {
@@ -63,4 +89,25 @@ export const STATUS_COLORS: Record<OrderStatus, string> = {
   pending_review: '#3b82f6',
   ready_ship: '#10b981',
   on_hold: '#ef4444'
+};
+
+export const EXCEPTION_STATUS_LABELS: Record<ExceptionStatus, string> = {
+  pending: '待处理',
+  processing: '处理中',
+  resolved: '已解决'
+};
+
+export const EXCEPTION_STATUS_COLORS: Record<ExceptionStatus, string> = {
+  pending: '#ef4444',
+  processing: '#f59e0b',
+  resolved: '#10b981'
+};
+
+export const EXCEPTION_CATEGORY_LABELS: Record<ExceptionCategory, string> = {
+  product_issue: '产品问题',
+  quantity_issue: '数量不符',
+  allergy_issue: '过敏信息问题',
+  refrigeration_issue: '冷藏要求冲突',
+  customer_request: '客户临时要求',
+  other: '其他问题'
 };
